@@ -1,6 +1,7 @@
 ﻿import json
 import re
 import requests
+from requests.adapters import HTTPAdapter
 import time
 import traceback
 
@@ -33,13 +34,16 @@ class Hypothesis:
                 "admin":  ['acct:' + self.username + '@hypothes.is']
                 }
         else: self.permissions = {}
+        self.session = requests.Session()
+        self.session.mount(self.api_url, HTTPAdapter(max_retries=3))
+
 
     def search(self, params={}):
         """ Call search API with no pagination, return rows """
         params['limit'] = self.single_page_limit
         h_url = self.query_url.format(query=urlencode(params))
-        print ( h_url )
-        json = requests.get(h_url).json()['rows']
+        # print ( h_url )
+        json = self.session.get(h_url).json().get('rows', [])
         return json
  
     def search_all(self, params={}):
@@ -48,20 +52,22 @@ class Hypothesis:
         params['limit'] = self.single_page_limit
         while True:
             h_url = self.query_url.format(query=urlencode(params, True))
-            print ( h_url )
+            # print ( h_url )
             if self.token is not None:
                 r = self.token_authenticated_query(h_url)
                 obj = r
             else:
-                r = requests.get(h_url)
+                r = self.session.get(h_url)
                 obj = r.json()
-            rows = obj['rows']
+            if 'rows' not in obj:
+                print ('no rows in obj', obj)
+            rows = obj.get('rows', [])
             row_count = len(rows)
-            print ( "%s rows" % row_count )
+            # print ( "%s rows" % row_count )
             if 'replies' in obj:
                rows += obj['replies']
             row_count = len(rows)
-            print ( "%s rows+replies" % row_count )
+            # print ( "%s rows+replies" % row_count )
             params['offset'] += row_count
             if params['offset'] > self.multi_page_limit:
                 break
@@ -73,7 +79,7 @@ class Hypothesis:
     def token_authenticated_query(self, url=None):
         try:
            headers = {'Authorization': 'Bearer ' + self.token, 'Content-Type': 'application/json;charset=utf-8' }
-           r = requests.get(url, headers=headers)
+           r = self.session.get(url, headers=headers)
            return r.json()
         except:
             print ( traceback.print_exc() )
@@ -111,7 +117,7 @@ class Hypothesis:
         if self.token is not None:
             obj = self.token_authenticated_query(h_url)
         else:
-            obj = requests.get(h_url)
+            obj = self.session.get(h_url)
         return obj
 
     def create_annotation_with_target(self, url=None, start_pos=None, end_pos=None, prefix=None, 
@@ -161,7 +167,7 @@ class Hypothesis:
         try:
             headers = {'Authorization': 'Bearer ' + self.token, 'Content-Type': 'application/json;charset=utf-8' }
             data = json.dumps(payload, ensure_ascii=False)
-            r = requests.post(self.api_url + '/annotations', headers=headers, data=data.encode('utf-8'))
+            r = self.session.post(self.api_url + '/annotations', headers=headers, data=data.encode('utf-8'))
             return r
         except:
             e = traceback.print_exc()
@@ -170,12 +176,12 @@ class Hypothesis:
     def update_annotation(self, id, payload):
         headers = {'Authorization': 'Bearer ' + self.token, 'Content-Type': 'application/json;charset=utf-8' }
         data = json.dumps(payload, ensure_ascii=False)
-        r = requests.put(self.api_url + '/annotations/' + id, headers=headers, data=data)
+        r = self.session.put(self.api_url + '/annotations/' + id, headers=headers, data=data)
         return r
     
     def delete_annotation(self, id):
        headers = {'Authorization': 'Bearer ' + self.token, 'Content-Type': 'application/json;charset=utf-8' }
-       r = requests.delete(self.api_url + '/annotations/' + id, headers=headers)
+       r = self.session.delete(self.api_url + '/annotations/' + id, headers=headers)
        return r 
 
 @classmethod
@@ -202,7 +208,7 @@ def transfer(url=None, from_group=None, to_group=None, username=None, token=None
             del row['id']
             del row['links']
             r = h2.post_annotation(row)
-            print (r.status_code)
+            # print (r.status_code)
         except:
             print (traceback.print_exc())      
 
