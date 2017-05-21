@@ -1,6 +1,7 @@
 ﻿import json
 import re
 import requests
+from requests.packages.urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 import time
 import traceback
@@ -34,8 +35,14 @@ class Hypothesis:
                 "admin":  ['acct:' + self.username + '@hypothes.is']
                 }
         else: self.permissions = {}
+
+        # http://stackoverflow.com/a/35504626
         self.session = requests.Session()
-        self.session.mount(self.api_url, HTTPAdapter(max_retries=3))
+        retries = Retry(total=5,
+                backoff_factor=0.1,
+                status_forcelist=[ 500, 502, 503, 504 ])
+
+        self.session.mount(self.api_url, HTTPAdapter(max_retries=retries))
 
 
     def search(self, params={}):
